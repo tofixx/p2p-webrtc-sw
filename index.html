@@ -1,61 +1,93 @@
 <html>
-    <head>
-        <script src="http://ajax.googleapis.com/ajax/libs/jquery/1.8/jquery.min.js" type="text/javascript"></script>
-        <script src="http://cdn.peerjs.com/0.3/peer.min.js"></script>  
-        <script type="text/javascript">
-          var conn, peer;
 
-            function registerPeer(){
+<head>
+    <script src="http://ajax.googleapis.com/ajax/libs/jquery/1.8/jquery.min.js" type="text/javascript"></script>
+    <script src="http://cdn.peerjs.com/0.3/peer.min.js"></script>
+    <script type="text/javascript">
+        var conn, peer;
 
-                peer = new Peer({
+        function receive(data, connection) {
+            var messages = $('#messages');
+            var date = new Date();
+            var time = date.getHours() + ':' + date.getMinutes() + ':' + date.getSeconds();
+            messages.append(connection.peer + " (" + time + "):<br>");
+
+            if (data.type === 'text') {
+                /* TEXT */
+                messages.append("text:", data.data);
+            } else if (data.type === 'file') {
+                /* FILE */
+                messages.append("file");
+                // create Blob from ArrayBuffer
+                var blob = new Blob([new Uint8Array(data.data)]);
+                var path = window.URL.createObjectURL(blob);
+
+                if (data.meta.type.startsWith('image')) {
+                    // file/image
+                    messages.append("/image:");
+                    messages.append(`<img src="${path}" width="100%" title="${data.meta.name}">`)
+                    console.log('image received', data);
+                } else {
+                    console.log('unsupported data type received', data);
+                }
+                messages.append("<br>");
+            } else {
+                console.log('unsupported data received', data);
+            }
+
+        }
+
+        function registerPeer() {
+
+            peer = new Peer({
                 key: '6penu7xt66dh1tt9',
                 debug: 3,
-                logFunction: function() {
+                logFunction: function () {
                     var copy = Array.prototype.slice.call(arguments).join(' ');
-                    $('.log').append(copy + '<br>');
+                    $('#log').prepend(copy + '<br>');
                 }
-            }); 
+            });
 
-            peer.on('open', function(id) {
+            peer.on('open', function (id) {
                 console.log('My peer ID is: ' + id);
                 $('#myPeerId').val(id);
             });
 
-            peer.on('connection', function(conn) {
-                conn.on('data', function(data){
-                    console.log('data received:', data);
+            peer.on('connection', function (conn) {
+                conn.on('data', function (data) {
+                    console.log('peer received data:', data);
+                    receive(data, conn);
                 });
-            });  
+            });
 
-            }
+        }
 
 
-            var setupConnection = function (otherPeerId, options) {
-                conn = peer.connect(otherPeerId);
-                
-                conn.on('open', function(){
-                    var me = $('#myPeerId').val();
-                    conn.send(`hi, there is ${me}`);
+        var setupConnection = function (otherPeerId, options) {
+            conn = peer.connect(otherPeerId);
 
-                });  
+            conn.on('open', function () {
+                var me = $('#myPeerId').val();
+                conn.send(`hi, there is ${me} connected.`);
+            });
 
-                conn.on('close', function(){
-                    console.log('connection closed...')
-                });
+            conn.on('close', function () {
+                console.log('connection closed...')
+            });
 
-                conn.on('error', function(err){
-                    console.log('an error occured:', err);
-                });
-            }
-            
-          $(document).ready(function(){
+            conn.on('error', function (err) {
+                console.log('an error occured:', err);
+            });
+        }
 
-            $('#connect').click(function(){
+        $(document).ready(function () {
+
+            $('#connect').click(function () {
                 var otherPeerId = $('#otherPeerId').val();
-                if(otherPeerId){
+                if (otherPeerId) {
                     console.log('try connect to', otherPeerId);
                     return setupConnection(otherPeerId, {
-                        label: 'filetransfer', 
+                        label: 'filetransfer',
                         reliable: true
                     });
                 } else {
@@ -64,42 +96,65 @@
                 }
             });
 
-            $('#close').click(function(){
+            $('#close').click(function () {
                 console.log('close connection...');
                 conn.close();
             });
 
-            $('#sendMessage').click(function(){
+            $('#sendMessage').click(function () {
                 var message = $('#message').val();
                 console.log('send message:', message);
-                conn.send(message);
+                var data = {
+                    type: "text",
+                    data: message
+                };
+                conn.send(data);
             });
 
-            $('#register').click(function(){
+            $('#sendFile').click(function () {
+                var fileBlob = $('#file')[0].files[0];
+                console.log('send file', fileBlob);
+                var data = {
+                    type: "file",
+                    meta: {
+                        name: fileBlob.name,
+                        path: "/location/on/host",
+                        type: fileBlob.type,
+                        size: fileBlob.size,
+                        lastModifiedDate: fileBlob.lastModifiedDate,
+                        encoding: "what?"
+                    },
+                    data: fileBlob // will be converted as arraybuffer
+                };
+                conn.send(data);
+            });
+
+            $('#register').click(function () {
                 registerPeer();
             });
 
             // todo add sample file to cache for later transfer
 
-          });
-        </script>      
-    </head>
-    <body>
+        });
+    </script>
+</head>
+
+<body>
     <div>
-        My peer id: 
+        My peer id:
         <input id="myPeerId" type="text" placeholder="click register...">
         <input id="register" name="register" type="button" value="register">
     </div>
     <div>
-      Connect to peer id: 
-      <input id="otherPeerId" name="otherPeerId" type="text" placeholder="add other peer id...">
-      <input id="connect" name="connect" type="button" value="connect">
-      <input id="close" name="close" type="button" value="close">
+        Connect to peer id:
+        <input id="otherPeerId" name="otherPeerId" type="text" placeholder="add other peer id...">
+        <input id="connect" name="connect" type="button" value="connect">
+        <input id="close" name="close" type="button" value="close">
     </div>
     <div>&nbsp;</div>
     <div>
         Write Message:
-        <input id="message" name="message" type="text" >
+        <input id="message" name="message" type="text">
         <input id="sendMessage" name="sendMessage" type="button" value="send message">
     </div>
     <div>
@@ -107,7 +162,18 @@
         <input id="file" name="file" type="file">
         <input id="sendFile" name="sendFile" type="button" value="send file">
     </div>
-    <h3>Log:</h3>
-    <div class="log"></div>
-    </body>
+    <table>
+        <tr valign="top">
+            <td>
+                <h3>Log:</h3>
+                <div id="log"></div>
+            </td>
+            <td>
+                <h3>Messages:</h3>
+                <div id="messages"></div>
+            </td>
+        </tr>
+    </table>
+</body>
+
 </html>
