@@ -64,7 +64,7 @@
                     // file/image
                     messages.append("/image:");
                     messages.append(`<img src="${path}" width="100%" title="${data.meta.name}">`)
-                    messages.append(`<a href="${location}">fetch file</a>`);
+                    messages.append(`<a href="${location}" target="_blank">fetch file</a>`);
                     console.log('image received', data);
                 } else {
                     console.log('unsupported data type received', data);
