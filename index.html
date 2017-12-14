@@ -4,14 +4,14 @@
     <script src="http://ajax.googleapis.com/ajax/libs/jquery/1.8/jquery.min.js" type="text/javascript"></script>
     <script src="http://cdn.peerjs.com/0.3/peer.min.js"></script>
     <script type="text/javascript">
-/**
- * https://developer.mozilla.org/de/docs/Web/API/ServiceWorkerContainer/register
- */
+        /**
+         * https://developer.mozilla.org/de/docs/Web/API/ServiceWorkerContainer/register
+         */
         if ('serviceWorker' in navigator) {
             navigator.serviceWorker.register('sw.js', {
-                scope: './'
+                scope: '/'
             }).then(function (registration) {
-                document.querySelector('#status').textContent = 'succeeded';
+                document.querySelector('#status').textContent = 'registration succeeded';
             }).catch(function (error) {
                 document.querySelector('#status').textContent = error;
             });
@@ -29,51 +29,102 @@
 
         function addFileToCache(meta, blob) {
             var location = document.location.origin + meta.path + meta.name;
-            caches.open('files').then(function (cache) {
+            var url = new URL(location);
+            return caches.open('files').then(function (cache) {
                 var response = new Response(blob, {
                     "status": 200,
                     "headers": {
                         "content-type": meta.type,
                         "content-length": meta.size
                     },
-                    "url": location
+                    "url": url
                 });
-                cache.put(location, response);
+                return cache.put(location, response);
+            }).then(success =>{
+                return location;
             });
-            return location;
+        }
+
+        function getTime() {
+            var date = new Date();
+            var time = date.getHours() + ':' + date.getMinutes() + ':' + date.getSeconds();
+            return time;
+        }
+
+        async function addDataToMessageStream(data, target, sending) {
+            if (data.type === 'text') {
+                /* TEXT */
+                target.append("text:", data.data);
+            } else if (data.type === 'file') {
+                /* FILE */
+                target.append("file");
+                // create Blob from ArrayBuffer
+                if(!sending){ // receiving only
+                var blob = new Blob([new Uint8Array(data.data)]);
+                var location = await addFileToCache(data.meta, blob);
+                }
+                if (data.meta.type.startsWith('image')) {
+                    // file/image
+                    target.append("/image:");
+                    if(sending){
+                        target.append(data.meta.name);
+                    }else{ // receiving
+                        target.append(`<img src="${location}" width="100%" title="${data.meta.name}">`)
+                        target.append(`<a href="${location}" target="_blank">fetch file again from cache</a>`);
+                        console.log('image received', data);
+                    }
+                } else {
+                    console.log('unsupported data type received', data);
+                }
+            } else if (data.type === 'filerequest') {
+                if(sending){
+                    target.append("send filerequest for");
+                }else{
+                    target.append("filerequest received for " + data.data);
+                    send(`response to request on file ${data.data}`);
+                }
+            } else {
+                console.log('unsupported data received', data);
+                target.append(data);
+            }
+            target.append("<br>");
         }
 
         function receive(data, connection) {
             var messages = $('#messages');
-            var date = new Date();
-            var time = date.getHours() + ':' + date.getMinutes() + ':' + date.getSeconds();
-            messages.append(connection.peer + " (" + time + "):<br>");
+            messages.append(connection.peer + " (" + getTime() + "): <br>");
+            addDataToMessageStream(data, messages)
+        }
 
-            if (data.type === 'text') {
-                /* TEXT */
-                messages.append("text:", data.data);
-            } else if (data.type === 'file') {
-                /* FILE */
-                messages.append("file");
-                // create Blob from ArrayBuffer
-                var blob = new Blob([new Uint8Array(data.data)]);
-                var path = window.URL.createObjectURL(blob);
-                var location = addFileToCache(data.meta, blob);
+        var send = async function (data) {
+            var messages = $('#messages');
+            messages.append(`You (${getTime()}): <br>`);
+            addDataToMessageStream(data, $('#messages'), true);
+            conn.send(data);
+        }
 
-                if (data.meta.type.startsWith('image')) {
-                    // file/image
-                    messages.append("/image:");
-                    messages.append(`<img src="${path}" width="100%" title="${data.meta.name}">`)
-                    messages.append(`<a href="${location}" target="_blank">fetch file</a>`);
-                    console.log('image received', data);
-                } else {
-                    console.log('unsupported data type received', data);
-                }
-            } else {
-                console.log('unsupported data received', data);
+        function initConnectionListener(connection, override) {
+            if (override) {
+                conn = connection;
             }
-            messages.append("<br>");
 
+            connection.on('open', function () {
+                var me = $('#myPeerId').val();
+                send(`hi, there is ${me} connected.`);
+            });
+
+            connection.on('data', function (data) {
+                console.log('peer received data:', data);
+                receive(data, connection);
+            });
+
+            connection.on('close', function () {
+                console.log('connectionection closed...')
+            });
+
+            connection.on('error', function (err) {
+                console.log('an error occured:', err);
+            });
         }
 
         function registerPeer() {
@@ -93,30 +144,14 @@
             });
 
             peer.on('connection', function (conn) {
-                conn.on('data', function (data) {
-                    console.log('peer received data:', data);
-                    receive(data, conn);
-                });
+                initConnectionListener(conn, true);
             });
 
         }
 
-
         var setupConnection = function (otherPeerId, options) {
             conn = peer.connect(otherPeerId);
-
-            conn.on('open', function () {
-                var me = $('#myPeerId').val();
-                conn.send(`hi, there is ${me} connected.`);
-            });
-
-            conn.on('close', function () {
-                console.log('connection closed...')
-            });
-
-            conn.on('error', function (err) {
-                console.log('an error occured:', err);
-            });
+            initConnectionListener(conn);
         }
 
         $(document).ready(function () {
@@ -147,7 +182,7 @@
                     type: "text",
                     data: message
                 };
-                conn.send(data);
+                send(data);
             });
 
             $('#sendFile').click(function () {
@@ -163,16 +198,24 @@
                         lastModifiedDate: fileBlob.lastModifiedDate,
                         encoding: "what?"
                     },
-                    data: fileBlob // will be converted as arraybuffer
+                    data: fileBlob // converted to arraybuffer
                 };
-                conn.send(data);
+                send(data);
             });
 
             $('#register').click(function () {
                 registerPeer();
             });
 
-            // todo add sample file to cache for later transfer
+            $('#getFile').click(function () {
+                var path = $('#filePath').val();
+                console.log('request file from', path);
+                var data = {
+                    type: "filerequest",
+                    data: path
+                };
+                send(data);
+            });
 
         });
     </script>
@@ -180,8 +223,11 @@
 
 <body>
     <div>
-        Service-Worker Status: <div id="status"></div>
+        Service-Worker Status:
+        <span id="status">
     </div>
+    </div>
+    <div>&nbsp;</div>
     <div>
         My peer id:
         <input id="myPeerId" type="text" placeholder="click register...">
@@ -204,13 +250,22 @@
         <input id="file" name="file" type="file">
         <input id="sendFile" name="sendFile" type="button" value="send file">
     </div>
+    <div>&nbsp;</div>
+    <div>
+        Request file by location:
+        <input id="filePath" name="filePath" type="text" placeholder="/path/to/file/name.ext" value="/assets/pexels-photo-292426.jpeg">
+        <br>
+        <input id="fileHash" name="fileHash" type="text" placeholder="hash of binary data">
+        <input id="getFile" name="getFile" type="button" value="get file">
+    </div>
+    <div>&nbsp;</div>
     <table>
         <tr valign="top">
-            <td>
+            <td width="50%">
                 <h3>Log:</h3>
                 <div id="log"></div>
             </td>
-            <td>
+            <td width="50%">
                 <h3>Messages:</h3>
                 <div id="messages"></div>
             </td>
