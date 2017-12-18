@@ -40,8 +40,17 @@
                     "url": url
                 });
                 return cache.put(location, response);
-            }).then(success =>{
+            }).then(success => {
                 return location;
+            });
+        }
+
+        async function loadFileFromCache(uri) {
+            var url = new URL(uri);
+            url.pathname = '/cache' + url.pathname;
+            return fetch(url).then(response => {
+                console.log('fetched', url);
+                return response;
             });
         }
 
@@ -59,16 +68,16 @@
                 /* FILE */
                 target.append("file");
                 // create Blob from ArrayBuffer
-                if(!sending){ // receiving only
-                var blob = new Blob([new Uint8Array(data.data)]);
-                var location = await addFileToCache(data.meta, blob);
+                if (!sending) { // receiving only
+                    var blob = new Blob([new Uint8Array(data.data)]);
+                    var location = await addFileToCache(data.meta, blob);
                 }
                 if (data.meta.type.startsWith('image')) {
                     // file/image
                     target.append("/image:");
-                    if(sending){
+                    if (sending) {
                         target.append(data.meta.name);
-                    }else{ // receiving
+                    } else { // receiving
                         target.append(`<img src="${location}" width="100%" title="${data.meta.name}">`)
                         target.append(`<a href="${location}" target="_blank">fetch file again from cache</a>`);
                         console.log('image received', data);
@@ -77,11 +86,23 @@
                     console.log('unsupported data type received', data);
                 }
             } else if (data.type === 'filerequest') {
-                if(sending){
-                    target.append("send filerequest for");
-                }else{
+                if (sending) {
+                    target.append("send filerequest for" + data.data);
+                } else {
                     target.append("filerequest received for " + data.data);
-                    send(`response to request on file ${data.data}`);
+                    var file = await loadFileFromCache(data.data);
+                    var path = new URL(data.data).pathname;
+                    var response = {
+                        type: "file",
+                        meta: {
+                            name: path.split('/').pop(),
+                            path: path.substring(0, path.lastIndexOf("/") + 1),
+                            type: file.headers.get('content-type'),
+                            size: file.headers.get('content-length')
+                        },
+                        data: await file.arrayBuffer()
+                    };
+                    send(response);
                 }
             } else {
                 console.log('unsupported data received', data);
@@ -111,30 +132,35 @@
             connection.on('open', function () {
                 var me = $('#myPeerId').val();
                 send(`hi, there is ${me} connected.`);
-            });
+                
+                connection.on('data', function (data) {
+                    console.log('peer received data:', data);
+                    receive(data, connection);
+                });
 
-            connection.on('data', function (data) {
-                console.log('peer received data:', data);
-                receive(data, connection);
-            });
+                connection.on('close', function () {
+                    console.log('connectionection closed...')
+                });
 
-            connection.on('close', function () {
-                console.log('connectionection closed...')
-            });
-
-            connection.on('error', function (err) {
-                console.log('an error occured:', err);
+                connection.on('error', function (err) {
+                    console.log('an error occured:', err);
+                });
             });
         }
 
         function registerPeer() {
 
             peer = new Peer({
-                key: '6penu7xt66dh1tt9',
+                key: 'wuk9o79i1udw8kt9',
                 debug: 3,
                 logFunction: function () {
                     var copy = Array.prototype.slice.call(arguments).join(' ');
                     $('#log').prepend(copy + '<br>');
+                },
+                config: {
+                    'iceServers': [{
+                        'url': 'stun:stun.l.google.com:19302'
+                    }]
                 }
             });
 
@@ -253,7 +279,7 @@
     <div>&nbsp;</div>
     <div>
         Request file by location:
-        <input id="filePath" name="filePath" type="text" placeholder="/path/to/file/name.ext" value="/assets/pexels-photo-292426.jpeg">
+        <input id="filePath" name="filePath" type="text" placeholder="/path/to/file/name.ext" value="http://localhost:8910/assets/pexels-photo-292426.jpeg">
         <br>
         <input id="fileHash" name="fileHash" type="text" placeholder="hash of binary data">
         <input id="getFile" name="getFile" type="button" value="get file">
