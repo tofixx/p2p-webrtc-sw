@@ -1,31 +1,10 @@
 <html>
 
 <head>
-    <script src="http://ajax.googleapis.com/ajax/libs/jquery/1.8/jquery.min.js" type="text/javascript"></script>
-    <script src="http://cdn.peerjs.com/0.3/peer.min.js"></script>
+    <script src="//ajax.googleapis.com/ajax/libs/jquery/1.8/jquery.min.js" type="text/javascript"></script>
+    <script src="//cdnjs.cloudflare.com/ajax/libs/peerjs/0.3.14/peer.js"></script>
     <script type="text/javascript">
-        /**
-         * https://developer.mozilla.org/de/docs/Web/API/ServiceWorkerContainer/register
-         */
-        if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('sw.js', {
-                scope: '/'
-            }).then(function (registration) {
-                document.querySelector('#status').textContent = 'registration succeeded';
-            }).catch(function (error) {
-                document.querySelector('#status').textContent = error;
-            });
-        } else {
-            // The current browser doesn't support service workers.
-            var aElement = document.createElement('a');
-            aElement.href = 'http://www.chromium.org/blink/serviceworker/service-worker-faq';
-            aElement.textContent = 'unavailable';
-            document.querySelector('#status').appendChild(aElement);
-        }
-
-        // end copied code
-
-        var conn, peer;
+        var connections = [], peer;
 
         function addFileToCache(meta, blob) {
             var location = document.location.origin + meta.path + meta.name;
@@ -132,7 +111,7 @@
             connection.on('open', function () {
                 var me = $('#myPeerId').val();
                 send(`hi, there is ${me} connected.`);
-                
+
                 connection.on('data', function (data) {
                     console.log('peer received data:', data);
                     receive(data, connection);
@@ -151,7 +130,10 @@
         function registerPeer() {
 
             peer = new Peer({
-                key: 'wuk9o79i1udw8kt9',
+                //key: 'wuk9o79i1udw8kt9',
+                host: 'localhost',
+                port: 9000,
+                path: '/api',
                 debug: 3,
                 logFunction: function () {
                     var copy = Array.prototype.slice.call(arguments).join(' ');
@@ -181,6 +163,28 @@
         }
 
         $(document).ready(function () {
+
+            /**
+             * https://developer.mozilla.org/de/docs/Web/API/ServiceWorkerContainer/register
+             */
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.register('sw.js', {
+                    scope: '/'
+                }).then(function (registration) {
+                    document.querySelector('#status').textContent = 'registration succeeded';
+                }).catch(function (error) {
+                    document.querySelector('#status').textContent = error.message;
+                });
+            } else {
+                // The current browser doesn't support service workers.
+                var aElement = document.createElement('a');
+                aElement.href = 'http://www.chromium.org/blink/serviceworker/service-worker-faq';
+                aElement.textContent = 'unavailable';
+                document.querySelector('#status').appendChild(aElement);
+            }
+
+            // end copied code
+
 
             $('#connect').click(function () {
                 var otherPeerId = $('#otherPeerId').val();
